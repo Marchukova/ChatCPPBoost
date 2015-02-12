@@ -8,8 +8,8 @@ using namespace boost::asio;
 using namespace std;
 
 /* Constructor */
-Server::Server(const std::string &address, unsigned short port) 
-	: ep(ip::address::from_string(address), port), acc(service, ep) {
+Server::Server(const std::string &address, unsigned short port, int numLastMessages) 
+	: ep(ip::address::from_string(address), port), acc(service, ep), lastMessages(numLastMessages) {
 }
 
 /* If a pointer is unique, then thread for the pointer is cancelled.
@@ -25,8 +25,19 @@ bool lastPtr(boost::shared_ptr<ip::tcp::socket> & element, ip::tcp::socket *sock
 /* Thread function.
 */
 void Server::readWrite(boost::shared_ptr<ip::tcp::socket> & sockPtr) {
-	try {
+	try {		
 		boost::asio::streambuf buf;
+		/* First, send last messages to client */
+		ostream out(&buf);
+		lastMessages.lock();
+			for (FixSizeLockQueue::const_iterator it = lastMessages.cbegin();
+					it != lastMessages.cend(); ++it) {
+				out << *it;
+				size_t n = write(*sockPtr, buf.data());
+				/* Delete from buffer what we just write */
+				buf.consume(n);
+			}
+		lastMessages.unlock();
 		while (read_until(*sockPtr, buf, "\n")) { 	// read data from client 
 			clientsMutex.lock();
 				/* Delete all client who disconnect(but not current) */
@@ -37,8 +48,12 @@ void Server::readWrite(boost::shared_ptr<ip::tcp::socket> & sockPtr) {
 					if (it->get() != sockPtr.get()) { //send if not current socket
 						write(**it, buf.data());
 					}		
+				/* Save in last messages */
+				istream in(&buf);
+				string s;
+				getline(in, s);
+				lastMessages.put(s + "\n");
 			clientsMutex.unlock();			
-			cout << &buf; // dump everything in console
 		}
 	} catch (boost::system::system_error) { //connection was closed
 	}

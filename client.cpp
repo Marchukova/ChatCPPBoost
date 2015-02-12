@@ -11,13 +11,14 @@ class Client {
 	io_service service; 
 	ip::tcp::socket socket;
 	boost::thread toServer, fromServer;
+	std::string userName;
 
 	void sendToServer() {
 		try {
 			while (true) {
 				std::string s;
-				std::cin >> s;
-				socket.write_some(buffer(s + "\n"));
+				std::getline(std::cin, s); 
+				socket.write_some(buffer(userName + ": " + s + "\n"));
 			}
 		} catch (boost::system::system_error) { //connection was closed
 		}
@@ -35,7 +36,8 @@ class Client {
 	}
 
 public:
-	Client(const std::string &address, unsigned short port) : socket(service) {
+	Client(const std::string & address, unsigned short port, const std::string & userName) 
+		: socket(service), userName(userName) {
 		/* Connects to the server */
 		ip::tcp::endpoint ep(ip::address::from_string(address), port);
 		socket.connect(ep);
@@ -50,7 +52,10 @@ public:
 };
 
 int main() {
-	Client client("127.0.0.1", 1234);
+	std::cout << "Please, enter your name" << std::endl;
+	std::string s;
+	std::getline(std::cin, s);
+	Client client("127.0.0.1", 1234, s);
 	client.join();
 	return 0;
 } /* End of 'main' function */
