@@ -2,8 +2,11 @@
 #define _WIN32_WINNT 0x0501
 
 #include <iostream>
+#include <vector>
 #include <boost/asio.hpp>
 #include <boost/thread.hpp>
+
+#include "message.h"
 
 using namespace boost::asio;
 
@@ -15,10 +18,22 @@ class Client {
 
 	void sendToServer() {
 		try {
+			boost::asio::streambuf buf;
+			std::ostream os(&buf);
+			std::vector<boost::asio::const_buffer> buffers(2);
 			while (true) {
 				std::string s;
 				std::getline(std::cin, s); 
-				socket.write_some(buffer(userName + ": " + s + "\n"));
+				boost::archive::binary_oarchive archive(os);
+				Message msg(userName, s + "\n");				
+				archive << msg; //serialize message
+				const size_t header = buf.size(); //size of serialized message
+				/* Size of serialized object */				
+				buffers[0] = boost::asio::buffer(&header, sizeof(header));
+				/* Serialized object */
+				buffers[1] = boost::asio::buffer(buf.data(), header);
+				boost::asio::write(socket, buffers);
+				buf.consume(header);  //clear input sequence
 			}
 		} catch (boost::system::system_error) { //connection was closed
 		}
@@ -27,9 +42,18 @@ class Client {
 	void getFromServer() {
 		try {
 			boost::asio::streambuf buf;
-			//ostream out(&buf); //stream to write to the buffer
-			while (read_until(socket, buf, "\n")) { 	// read data from client 
-				std::cout << &buf; // dump everything in console
+			std::istream in(&buf);
+			/* Read header */
+			size_t header;
+			while (read(socket, boost::asio::buffer(&header, sizeof(header)))) { 	// read data from server
+				/* Read body */
+				read(socket, buf.prepare(header));
+			    buf.commit(header);  //prepare streambuf for input
+				/* Deserialization */
+				boost::archive::binary_iarchive archive(in);
+				Message msg;
+				archive >> msg;
+				std::cout << msg.getMessage(); 
 			}
 		} catch (boost::system::system_error) { //connection was closed
 		}

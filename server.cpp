@@ -1,4 +1,5 @@
 #include <iostream>
+#include <vector>
 #include <boost/date_time.hpp>
 #include <boost/bind.hpp>
 
@@ -26,19 +27,23 @@ bool lastPtr(boost::shared_ptr<ip::tcp::socket> & element, ip::tcp::socket *sock
 */
 void Server::readWrite(boost::shared_ptr<ip::tcp::socket> & sockPtr) {
 	try {		
-		boost::asio::streambuf buf;
 		/* First, send last messages to client */
-		ostream out(&buf);
 		lastMessages.lock();
-			for (FixSizeLockQueue::const_iterator it = lastMessages.cbegin();
+			for (FixSizeLockQueue<string>::const_iterator 
+					it = lastMessages.cbegin();
 					it != lastMessages.cend(); ++it) {
-				out << *it;
-				size_t n = write(*sockPtr, buf.data());
-				/* Delete from buffer what we just write */
-				buf.consume(n);
+				write(*sockPtr, boost::asio::buffer(*it));
 			}
 		lastMessages.unlock();
-		while (read_until(*sockPtr, buf, "\n")) { 	// read data from client 
+
+		boost::asio::streambuf buf;
+		size_t header;
+		vector<boost::asio::const_buffer> buffers(2);
+		while (read(*sockPtr, boost::asio::buffer(&header, sizeof(header)))) { 	// read data from client 
+			read(*sockPtr, buf.prepare(header));
+			buf.commit(header);
+			buffers[0] = boost::asio::buffer(&header, sizeof(header));
+			buffers[1] = boost::asio::buffer(buf.data(), header);
 			clientsMutex.lock();
 				/* Delete all client who disconnect(but not current) */
 				clients.remove_if(boost::bind(lastPtr, _1, sockPtr.get()));
@@ -46,14 +51,14 @@ void Server::readWrite(boost::shared_ptr<ip::tcp::socket> & sockPtr) {
 				for (list<boost::shared_ptr<ip::tcp::socket> >::iterator it = clients.begin();
 						it != clients.end(); ++it) 
 					if (it->get() != sockPtr.get()) { //send if not current socket
-						write(**it, buf.data());
-					}		
-				/* Save in last messages */
-				istream in(&buf);
-				string s;
-				getline(in, s);
-				lastMessages.put(s + "\n");
+						write(**it, buffers);
+					}	
 			clientsMutex.unlock();			
+			/* Save in last messages */
+			string s((const char *)&header, sizeof(header));
+			s += string(boost::asio::buffer_cast<const char*>(buf.data()), header);
+			lastMessages.put(s);
+			buf.consume(header);
 		}
 	} catch (boost::system::system_error) { //connection was closed
 	}

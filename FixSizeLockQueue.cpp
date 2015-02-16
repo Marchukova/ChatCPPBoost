@@ -1,6 +1,7 @@
-#include "server.h"
 
-void Server::FixSizeLockQueue::put(const std::string & s) {
+#include "server.h"
+/*
+template<class Type> void Server::FixSizeLockQueue<Type>::put(Type const & s) {
 	lock();
 		if (data.size() == size) 
 			data.pop_front();

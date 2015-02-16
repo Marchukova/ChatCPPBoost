@@ -12,13 +12,13 @@
 #define BOOST_ASIO_SEPARATE_COMPILATION
 
 class Server {
-	class FixSizeLockQueue {
-		std::deque<std::string> data;
+	template<class Type> class FixSizeLockQueue {
+		std::deque<Type> data;
 		boost::mutex queueMutex;
 		int size;
 	public:
 		/* Work with const_iterator */
-		typedef std::deque<std::string>::const_iterator const_iterator;
+		typedef typename std::deque<Type>::const_iterator const_iterator;
 		const_iterator cbegin() const { return data.cbegin(); }
 		const_iterator cend() const { return data.cend(); }
 		/* Work with mutex */
@@ -27,14 +27,21 @@ class Server {
 		/* Consturctor */
 		FixSizeLockQueue(const int size) : size(size) {}
 		/* Add new object in queue */
-		void put(const std::string &);
+		void put(Type const & s) {
+			lock();
+				if (data.size() == size) 
+					data.pop_front();
+				data.push_back(s);
+			unlock();
+		} /* End of 'Server::FixSizeLockQueue::put' function */
+
 	};
 
 	boost::asio::io_service service; 
 	boost::asio::ip::tcp::endpoint ep;
 	boost::asio::ip::tcp::acceptor acc; //object for client's connection
 	/* Store last messages to show it to new clients */
-	FixSizeLockQueue lastMessages;
+	FixSizeLockQueue<std::string> lastMessages;
 
 	/* List of all current server's clients */
 	std::list<boost::shared_ptr<boost::asio::ip::tcp::socket> > clients;
