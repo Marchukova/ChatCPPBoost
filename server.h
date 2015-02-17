@@ -24,8 +24,10 @@ class Server {
 		/* Work with mutex */
 		void lock() { queueMutex.lock(); }
 		void unlock() { queueMutex.unlock(); }
-		/* Consturctor */
+		/* Consturctors */
+		FixSizeLockQueue() {}
 		FixSizeLockQueue(const int size) : size(size) {}
+		void setSize(int const size) { this->size = size; }
 		/* Add new object in queue */
 		void put(Type const & s) {
 			lock();
@@ -42,12 +44,18 @@ class Server {
 	boost::asio::ip::tcp::acceptor acc; //object for client's connection
 	/* Store last messages to show it to new clients */
 	FixSizeLockQueue<std::string> lastMessages;
+	size_t numberOfLastMessages;
 
 	/* List of all current server's clients */
 	std::list<boost::shared_ptr<boost::asio::ip::tcp::socket> > clients;
+	size_t maxNumberOfClients;
+
+	/* Stores user's name as key with its password */
+	std::map<std::string, std::string> clientsInfo;
+
 	/* Mutex to work with list of clients */
 	boost::mutex clientsMutex;
-	
+
 	/* Read data from client and send it to others client */
 	void readWrite(boost::shared_ptr<boost::asio::ip::tcp::socket> & sockPtr);
 public:

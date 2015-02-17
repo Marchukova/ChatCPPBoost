@@ -1,7 +1,11 @@
 #include <iostream>
 #include <vector>
+#include <algorithm>
+#include <map>
 #include <boost/date_time.hpp>
 #include <boost/bind.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/xml_parser.hpp>
 
 #include "server.h"
 
@@ -10,7 +14,22 @@ using namespace std;
 
 /* Constructor */
 Server::Server(const std::string &address, unsigned short port, int numLastMessages) 
-	: ep(ip::address::from_string(address), port), acc(service, ep), lastMessages(numLastMessages) {
+	: ep(ip::address::from_string(address), port), acc(service, ep)
+{
+	boost::property_tree::ptree tree;
+	boost::property_tree::read_xml("chat.xml", tree);
+
+	/* Get chat's attributes */
+	maxNumberOfClients = tree.get<size_t>("chat.<xmlattr>.numberOfClients");
+	numberOfLastMessages = tree.get<size_t>("chat.<xmlattr>.numberOfLastMessages");
+
+	lastMessages.setSize(numberOfLastMessages);
+	/* Fill clients info */
+	tree = tree.get_child("chat");
+	boost::property_tree::ptree::iterator it = tree.begin();
+	++it; //first always goes attributes, so we pass them
+	for ( ; it != tree.end(); ++it)
+		clientsInfo[it->second.get<string>("name", "")] = it->second.get<string>("password", "");
 }
 
 /* If a pointer is unique, then thread for the pointer is cancelled.
@@ -67,13 +86,40 @@ void Server::readWrite(boost::shared_ptr<ip::tcp::socket> & sockPtr) {
 /* Connect new client and start a thread for it. 
 */
 void Server::run() {
+	//size_t currentUsersNumber = 0;
 	while (true) {
 		boost::shared_ptr<ip::tcp::socket> sockPtr(new ip::tcp::socket(service));
 		acc.accept(*sockPtr); //wait for connection
 		
+		/* Check user name and password */
+		boost::asio::streambuf buf;
+		istream in(&buf);
+		string name, password;
+		read_until(*sockPtr, buf, "\n");
+		in >> name;
+		read_until(*sockPtr, buf, "\n");
+		in >> password;
+		map<string, string>::iterator it = clientsInfo.find(name);
+		if (it == clientsInfo.end() || it->second != password) {
+			write(*sockPtr, buffer("IncorrectNamePassword\n"));
+			continue;
+		}
+		/* Check number of users */
 		clientsMutex.lock();
-			clients.push_back(sockPtr);
-			boost::thread thread(&Server::readWrite, this, sockPtr); //Start a thread for a new client
+			if (clients.size() == maxNumberOfClients) {
+				/* Maybe some users are disconnected */
+				clients.remove_if(boost::bind(lastPtr, _1, sockPtr.get()));
+				if (clients.size() == maxNumberOfClients) { //No, nobody are disconnected 
+					clientsMutex.unlock();
+					write(*sockPtr, buffer("TooMuchUsers\n"));
+					continue;
+				}
+			}
+			else { // Everything is ok 
+				write(*sockPtr, buffer("\n"));
+				clients.push_back(sockPtr);
+				boost::thread thread(&Server::readWrite, this, sockPtr); //Start a thread for a new client
+			}
 		clientsMutex.unlock();
 	}
 } /* End of 'Server::run' function */
