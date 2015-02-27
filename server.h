@@ -8,32 +8,33 @@
 #include <boost/asio.hpp>
 #include <boost/thread.hpp>
 #include <boost/shared_ptr.hpp>
+#include "FixSizeQueue.h"
 
 #define BOOST_ASIO_SEPARATE_COMPILATION
 
 class Server {
 	template<class Type> class FixSizeLockQueue {
-		std::deque<Type> data;
+		FixSizeQueue<Type> data;
 		boost::mutex queueMutex;
 		int size;
 	public:
 		/* Work with const_iterator */
-		typedef typename std::deque<Type>::const_iterator const_iterator;
+		typedef typename FixSizeQueue<Type>::const_iterator const_iterator;
 		const_iterator cbegin() const { return data.cbegin(); }
 		const_iterator cend() const { return data.cend(); }
 		/* Work with mutex */
 		void lock() { queueMutex.lock(); }
 		void unlock() { queueMutex.unlock(); }
 		/* Consturctors */
-		FixSizeLockQueue() {}
-		FixSizeLockQueue(const int size) : size(size) {}
-		void setSize(int const size) { this->size = size; }
+		FixSizeLockQueue(const int size = 0) : size(size) {}
+		void setSize(int const size) { 
+			this->size = size; 
+			data = FixSizeQueue<Type>(size);
+		}
 		/* Add new object in queue */
 		void put(Type const & s) {
 			lock();
-				if (data.size() == size) 
-					data.pop_front();
-				data.push_back(s);
+				data.put(s);
 			unlock();
 		} /* End of 'Server::FixSizeLockQueue::put' function */
 
@@ -59,7 +60,7 @@ class Server {
 	/* Read data from client and send it to others client */
 	void readWrite(boost::shared_ptr<boost::asio::ip::tcp::socket> & sockPtr);
 public:
-	Server(const std::string &address, unsigned short port, int numLastMessages);
+	Server(const std::string &address, unsigned short port);
 	
 	/* Connect new client and start a thread for it */
 	void run();

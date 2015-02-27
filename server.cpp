@@ -13,7 +13,7 @@ using namespace boost::asio;
 using namespace std;
 
 /* Constructor */
-Server::Server(const std::string &address, unsigned short port, int numLastMessages) 
+Server::Server(const std::string &address, unsigned short port) 
 	: ep(ip::address::from_string(address), port), acc(service, ep)
 {
 	boost::property_tree::ptree tree;
@@ -86,7 +86,6 @@ void Server::readWrite(boost::shared_ptr<ip::tcp::socket> & sockPtr) {
 /* Connect new client and start a thread for it. 
 */
 void Server::run() {
-	//size_t currentUsersNumber = 0;
 	while (true) {
 		boost::shared_ptr<ip::tcp::socket> sockPtr(new ip::tcp::socket(service));
 		acc.accept(*sockPtr); //wait for connection
@@ -112,14 +111,13 @@ void Server::run() {
 				if (clients.size() == maxNumberOfClients) { //No, nobody are disconnected 
 					clientsMutex.unlock();
 					write(*sockPtr, buffer("TooMuchUsers\n"));
-					continue;
+					break;
 				}
 			}
-			else { // Everything is ok 
-				write(*sockPtr, buffer("\n"));
-				clients.push_back(sockPtr);
-				boost::thread thread(&Server::readWrite, this, sockPtr); //Start a thread for a new client
-			}
+			// Everything is ok 
+			write(*sockPtr, buffer("\n"));
+			clients.push_back(sockPtr);
+			boost::thread thread(&Server::readWrite, this, sockPtr); //Start a thread for a new client
 		clientsMutex.unlock();
 	}
 } /* End of 'Server::run' function */
